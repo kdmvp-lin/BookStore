@@ -1473,12 +1473,1409 @@ login () {
 </style>
 ```
 
-
-
-## 7.导航栏与图书页面
+## 7.导航栏
 
 ### 7.1路由配置
 
 为了实现第一个要求，我们需要把导航栏放在其它页面的父页面中（对 Vue 来说就是父组件），之前我们讲过，`App.vue `是所有组件的父组件，但把导航栏放进去不合适，因为我们的登录页面中不应该显示导航栏。
 
 为了解决这个问题，我们在 `component`s 目录下直接新建一个组件，命名为 `Home.vue`，原始代码如下：
+
+```html
+<template>
+  <div>
+    <router-view/>
+  </div>
+</template>
+
+<script>
+  export default {
+    name: 'Home'
+  }
+</script>
+
+<style scoped>
+
+</style>
+```
+
+这里和 App.vue 一样，写入了一个 <router-view/>，也就是子页面（组件）显示的地方。
+
+接下来，来建立路由的父子关系。注意我们在一个组件中通过导入引用了其它组件，也可以称之为父子组件，但想要通过 <router-view/> 控制子组件的显示，则需要进行路由的相关配置。
+
+打开 router/index.js ，修改代码如下
+
+```javascript
+import Vue from 'vue'
+import Router from 'vue-router'
+import AppIndex from '../components/home/AppIndex'
+import Login from '../components/Login'
+import Home from '../components/Home'
+
+Vue.use(Router)
+
+export default new Router({
+  mode: 'history',
+  routes: [
+    {
+      path: '/home',
+      name: 'Home',
+      component: Home,
+      // home页面并不需要被访问
+      redirect: '/index',
+      children: [
+        {
+          path: '/index',
+          name: 'AppIndex',
+          component: AppIndex,
+          meta: {
+            requireAuth: true
+          }
+        }
+      ]
+    },
+    {
+      path: '/login',
+      name: 'Login',
+      component: Login
+    }
+  ]
+})
+```
+
+注意我们并没有把首页的访问路径设置为 `/home/index`，仍然可以通过 `/index` 访问首页，这样配置其实是感受不到 `/home` 这个路径的存在的。之后再添加新的页面，可以直接在 `children` 中增添对应的内容。
+
+## 7.2使用NavMenu组件
+
+打开 Element 的文档，找到 NavMenu 组件相关内容：
+
+https://element.eleme.cn/2.0/#/zh-CN/[component](https://so.csdn.net/so/search?q=component&spm=1001.2101.3001.7020)/menu
+
+主要有顶栏、侧栏两种导航样式，我们选择顶栏型，点击显示代码
+
+这些代码基本涵盖了各种用法，我们可以选择自己需要的部分，并根据下面的文档对它进行改造。
+
+我们在 `components` 文件夹里新建一个 `common` 文件夹，用来存储公共的组件，并在该文件夹新建一个组件 `NavMenu.vue`，经过我修改的代码如下：
+
+```html
+<template>
+    <el-menu
+      :default-active="'/index'"
+      router
+      mode="horizontal"
+      background-color="white"
+      text-color="#222"
+      active-text-color="red"
+      style="min-width: 1300px">
+      <el-menu-item v-for="(item,i) in navList" :key="i" :index="item.name">
+        {{ item.navItem }}
+      </el-menu-item>
+      <a href="#nowhere" style="color: #222;float: right;padding: 20px;">更多功能</a>
+      <i class="el-icon-menu" style="float:right;font-size: 45px;color: #222;padding-top: 8px"></i>
+      <span style="position: absolute;padding-top: 20px;right: 43%;font-size: 20px;font-weight: bold">White Jotter - Your Mind Palace</span>
+    </el-menu>
+</template>
+
+<script>
+  export default {
+    name: 'NavMenu',
+    data () {
+      return {
+        navList: [
+          {name: '/index', navItem: '首页'},
+          {name: '/jotter', navItem: '笔记本'},
+          {name: '/library', navItem: '图书馆'},
+          {name: '/admin', navItem: '个人中心'}
+        ]
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  a{
+    text-decoration: none;
+  }
+
+  span {
+    pointer-events: none;
+  }
+</style>
+```
+
+这里需要解释两点。
+
+第一，在 `<el-menu>` 标签中我们开启了 `router` 模式，在 Element 文档中的解释如下：
+
+第二，我们通过 v-for 指令，把 navList 数组渲染为一组 <el-menu-item> 元素，也即导航栏的内容。当然我们也可以分开写，这种用法只是显得 six 一些（当需要动态更改列表内容时就很有用了）
+
+另外为了美观我还加了点别的东西，都很基础，就不多说了。
+
+接下来，我们需要把这个组件放在 Home.vue 中。
+
+修改 Home.vue 的代码如下：
+
+```html
+<template>
+  <div>
+    <nav-menu></nav-menu>
+    <router-view/>
+  </div>
+</template>
+
+<script>
+  import NavMenu from './common/NavMenu'
+  export default {
+    name: 'Home',
+    components: {NavMenu}
+  }
+</script>
+
+<style scoped>
+
+</style>
+```
+
+这样，我们访问 http://localhost:8080/index ，就会在顶部出现导航栏。这时我们还没有别的页面可以访问，所以点击按钮就跳到了空白的页面。
+
+## 8.图书页面
+
+页面大概需要以下内容：
+
+1. 图书展示区域
+
+2. 分类导航栏
+
+3. 搜索栏
+
+4. 页码
+
+### 8.1LibraryIndex.vue
+
+在 `components` 中新建文件夹 `library`，新建组件 `LibraryIndex.vue`，作为图书页面的根组件，代码如下
+
+```html
+<template>
+  <el-container>
+    <el-aside style="width: 200px;margin-top: 20px">
+      <switch></switch>
+      <!--<SideMenu></SideMenu>-->
+    </el-aside>
+    <el-main>
+      <!--<books></books>-->
+    </el-main>
+  </el-container>
+</template>
+
+<script>
+
+  export default {
+    name: 'AppLibrary'
+  }
+</script>
+
+<style scoped>
+
+</style>
+```
+
+接下来我们配置这个页面的路由，修改 `router/index.js` 代码如下：
+
+```javascript
+import Vue from 'vue'
+import Router from 'vue-router'
+import AppIndex from '../components/home/AppIndex'
+import Login from '../components/Login'
+import Home from '../components/Home'
+import LibraryIndex from '../components/library/LibraryIndex'
+
+Vue.use(Router)
+
+export default new Router({
+  mode: 'history',
+  routes: [
+    {
+      path: '/home',
+      name: 'Home',
+      component: Home,
+      redirect: '/index',
+      children: [
+        {
+          path: '/index',
+          name: 'AppIndex',
+          component: AppIndex,
+          meta: {
+            requireAuth: true
+          }
+        },
+        {
+          path: '/library',
+          name: 'Library',
+          component: LibraryIndex,
+          meta: {
+            requireAuth: true
+          }
+        }
+      ]
+    },
+    {
+      path: '/login',
+      name: 'Login',
+      component: Login
+    }
+  ]
+})
+```
+
+### 8.2 SideMenu.vue
+
+编写一个侧边栏组件。放在 `/library` 文件夹中，代码如下
+
+```html
+<template>
+  <el-menu
+    class="categories"
+    default-active="0"
+    @select="handleSelect"
+    active-text-color="red">
+    <el-menu-item index="0">
+      <i class="el-icon-menu"></i>
+      <span slot="title">全部</span>
+    </el-menu-item>
+    <el-menu-item index="1">
+      <i class="el-icon-menu"></i>
+      <span slot="title">文学</span>
+    </el-menu-item>
+    <el-menu-item index="2">
+      <i class="el-icon-menu"></i>
+      <span slot="title">流行</span>
+    </el-menu-item>
+    <el-menu-item index="3">
+      <i class="el-icon-menu"></i>
+      <span slot="title">文化</span>
+    </el-menu-item>
+    <el-menu-item index="4">
+      <i class="el-icon-menu"></i>
+      <span slot="title">生活</span>
+    </el-menu-item>
+    <el-menu-item index="5">
+      <i class="el-icon-menu"></i>
+      <span slot="title">经管</span>
+    </el-menu-item>
+    <el-menu-item index="6">
+      <i class="el-icon-menu"></i>
+      <span slot="title">科技</span>
+    </el-menu-item>
+  </el-menu>
+</template>
+
+<script>
+  export default {
+    name: 'SideMenu'
+  }
+</script>
+
+<style scoped>
+  .categories {
+    position: fixed;
+    margin-left: 50%;
+    left: -600px;
+    top: 100px;
+    width: 150px;
+  }
+</style>
+```
+
+在 `LibraryIndex.vue` 中使用这个组件
+
+```html
+<template>
+  <el-container>
+    <el-aside style="width: 200px;margin-top: 20px">
+      <switch></switch>
+      <SideMenu></SideMenu>
+    </el-aside>
+    <el-main>
+      <!--<books></books>-->
+    </el-main>
+  </el-container>
+</template>
+
+<script>
+  import SideMenu from './SideMenu'
+  export default {
+    name: 'AppLibrary',
+    components: {SideMenu}
+  }
+</script>
+
+<style scoped>
+
+</style>
+```
+
+### 8.3 Books.vue
+
+最后，我们用一个组件来显示图书。这个组件比较复杂，初始代码如下
+
+```html
+<template>
+  <div>
+    <el-row style="height: 840px;">
+      <!--<search-bar></search-bar>-->
+      <el-tooltip effect="dark" placement="right"
+                  v-for="item in books"
+                  :key="item.id">
+        <p slot="content" style="font-size: 14px;margin-bottom: 6px;">{{item.title}}</p>
+        <p slot="content" style="font-size: 13px;margin-bottom: 6px">
+          <span>{{item.author}}</span> /
+          <span>{{item.date}}</span> /
+          <span>{{item.press}}</span>
+        </p>
+        <p slot="content" style="width: 300px" class="abstract">{{item.abs}}</p>
+        <el-card style="width: 135px;margin-bottom: 20px;height: 233px;float: left;margin-right: 15px" class="book"
+                 bodyStyle="padding:10px" shadow="hover">
+          <div class="cover">
+            <img :src="item.cover" alt="封面">
+          </div>
+          <div class="info">
+            <div class="title">
+              <a href="">{{item.title}}</a>
+            </div>
+          </div>
+          <div class="author">{{item.author}}</div>
+        </el-card>
+      </el-tooltip>
+    </el-row>
+    <el-row>
+      <el-pagination
+        :current-page="1"
+        :page-size="10"
+        :total="20">
+      </el-pagination>
+    </el-row>
+  </div>
+</template>
+
+<script>
+  export default {
+    name: 'Books',
+    data () {
+      return {
+        books: [
+          {
+            cover: 'https://i.loli.net/2019/04/10/5cada7e73d601.jpg',
+            title: '三体',
+            author: '刘慈欣',
+            date: '2019-05-05',
+            press: '重庆出版社',
+            abs: '文化大革命如火如荼进行的同时。军方探寻外星文明的绝秘计划“红岸工程”取得了突破性进展。但在按下发射键的那一刻，历经劫难的叶文洁没有意识到，她彻底改变了人类的命运。地球文明向宇宙发出的第一声啼鸣，以太阳为中心，以光速向宇宙深处飞驰……'
+          }
+        ]
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  .cover {
+    width: 115px;
+    height: 172px;
+    margin-bottom: 7px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  img {
+    width: 115px;
+    height: 172px;
+    /*margin: 0 auto;*/
+  }
+
+  .title {
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .author {
+    color: #333;
+    width: 102px;
+    font-size: 13px;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+
+  .abstract {
+    display: block;
+    line-height: 17px;
+  }
+
+  a {
+    text-decoration: none;
+  }
+
+  a:link, a:visited, a:focus {
+    color: #3377aa;
+  }
+</style>
+```
+
+### 8.4数据库设计
+
+#### user表：
+
+```sql
+DROP TABLE IF EXISTS `user`;
+CREATE TABLE `user` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` char(255) DEFAULT NULL,
+  `password` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8;
+```
+
+#### book表：
+
+```sql
+DROP TABLE IF EXISTS `book`;
+CREATE TABLE `book` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `cover` varchar(255) DEFAULT '',
+  `title` varchar(255) NOT NULL DEFAULT '',
+  `author` varchar(255) DEFAULT '',
+  `date` varchar(20) DEFAULT '',
+  `press` varchar(255) DEFAULT '',
+  `abs` varchar(255) DEFAULT NULL,
+  `cid` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_book_category_on_cid` (`cid`),
+  CONSTRAINT `fk_book_category_on_cid` FOREIGN KEY (`cid`) REFERENCES `category` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=102 DEFAULT CHARSET=utf8;
+```
+
+#### category表：
+
+```sql
+DROP TABLE IF EXISTS `category`;
+CREATE TABLE `category` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+```
+
+### 8.5后端CRUD
+
+- 查询书籍信息（查）
+- 上传书籍信息（增）
+- 修改书籍信息（改）
+- 删除书籍信息（删）
+
+#### pojo层
+
+##### Category：
+
+```java
+package com.evan.wj.pojo;
+
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.Table;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@Entity
+@Table(name = "category")
+@JsonIgnoreProperties({ "handler","hibernateLazyInitializer" })
+
+public class Category {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    int id;
+
+    String name;
+
+    public int getId() {
+        return id;
+    }
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+    public void setName(String name) {
+        this.name = name;
+    }
+}
+```
+
+##### Book：
+
+```java
+package com.evan.wj.pojo;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import javax.persistence.*;
+
+@Entity
+@Table(name = "book")
+@JsonIgnoreProperties({"handler","hibernateLazyInitializer"})
+public class Book {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    int id;
+
+    @ManyToOne
+    @JoinColumn(name="cid")
+    private Category category;
+
+    String cover;
+    String title;
+    String author;
+    String date;
+    String press;
+    String abs;
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public void setCategory(Category category) {
+        this.category = category;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public String getPress() {
+        return press;
+    }
+
+    public void setPress(String press) {
+        this.press = press;
+    }
+
+    public String getAbs() {
+        return abs;
+    }
+
+    public void setAbs(String abs) {
+        this.abs = abs;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getCover() {
+        return cover;
+    }
+
+    public void setCover(String cover) {
+        this.cover = cover;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+}
+```
+
+#### dao层
+
+##### BookDAO：
+
+```java
+package com.evan.wj.dao;
+
+import com.evan.wj.pojo.Book;
+import com.evan.wj.pojo.Category;
+import org.springframework.data.domain.Page;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface BookDAO extends JpaRepository<Book,Integer> {
+    List<Book> findAllByCategory(Category category);
+    List<Book> findAllByTitleLikeOrAuthorLike(String keyword1, String keyword2);
+}
+```
+
+##### CategoryDAO：
+
+```java
+package com.evan.wj.dao;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.evan.wj.pojo.Category;
+
+public interface CategoryDAO extends JpaRepository<Category, Integer> {
+
+}
+```
+
+#### service层
+
+##### CategoryService:
+
+```java
+package com.evan.wj.service;
+
+import com.evan.wj.dao.CategoryDAO;
+import com.evan.wj.pojo.Category;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class CategoryService {
+    @Autowired
+    CategoryDAO categoryDAO;
+
+    public List<Category> list() {
+        Sort sort = new Sort(Sort.Direction.DESC, "id");
+        return categoryDAO.findAll(sort);
+    }
+
+    public Category get(int id) {
+        Category c= categoryDAO.findById(id).orElse(null);
+        return c;
+    }
+}
+```
+
+##### BookService:
+
+```java
+package com.evan.wj.service;
+
+import com.evan.wj.dao.BookDAO;
+import com.evan.wj.pojo.Book;
+import com.evan.wj.pojo.Category;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class BookService {
+    @Autowired
+    BookDAO bookDAO;
+    @Autowired
+    CategoryService categoryService;
+
+    public List<Book> list() {
+        Sort sort = new Sort(Sort.Direction.DESC, "id");
+        return bookDAO.findAll(sort);
+    }
+
+    public void addOrUpdate(Book book) {
+        bookDAO.save(book);
+    }
+
+    public void deleteById(int id) {
+        bookDAO.deleteById(id);
+    }
+
+    public List<Book> listByCategory(int cid) {
+        Category category = categoryService.get(cid);
+        return bookDAO.findAllByCategory(category);
+    }
+}
+```
+
+#### Controller 层
+
+##### LibraryController：
+
+```java
+package com.evan.wj.controller;
+
+import com.evan.wj.pojo.Book;
+import com.evan.wj.service.BookService;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+public class LibraryController {
+    @Autowired
+    BookService bookService;
+
+    @GetMapping("/api/books")
+    public List<Book> list() throws Exception {
+        return bookService.list();
+    }
+
+    @PostMapping("/api/books")
+    public Book addOrUpdate(@RequestBody Book book) throws Exception {
+        bookService.addOrUpdate(book);
+        return book;
+    }
+
+    @PostMapping("/api/delete")
+    public void delete(@RequestBody Book book) throws Exception {
+        bookService.deleteById(book.getId());
+    }
+
+
+    @GetMapping("/api/categories/{cid}/books")
+    public List<Book> listByCategory(@PathVariable("cid") int cid) throws Exception {
+        if (0 != cid) {
+            return bookService.listByCategory(cid);
+        } else {
+            return list();
+        }
+    }
+}
+```
+
+运行项目，测试一下功能。
+
+首先是查询所有书籍，访问 `http://localhost:8443/api/books`
+
+然后测试分类，访问 `http://localhost:8443/api/categories/1/books`，查看所有分类 id 为 1，即分类为“文学”的书籍，
+
+## 9.前端核心功能实现
+
+### 9.1EditForm.vue
+
+这个组件是增加或者修改图书的弹出表单。同样放在 library 文件夹下。
+
+```html
+<template>
+  <div>
+    <i class="el-icon-circle-plus-outline"  @click="dialogFormVisible = true"></i>
+    <el-dialog
+      title="添加/修改图书"
+      :visible.sync="dialogFormVisible"
+      @close="clear">
+      <el-form v-model="form" style="text-align: left" ref="dataForm">
+        <el-form-item label="书名" :label-width="formLabelWidth" prop="title">
+          <el-input v-model="form.title" autocomplete="off" placeholder="不加《》"></el-input>
+        </el-form-item>
+        <el-form-item label="作者" :label-width="formLabelWidth" prop="author">
+          <el-input v-model="form.author" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="出版日期" :label-width="formLabelWidth" prop="date">
+          <el-input v-model="form.date" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="出版社" :label-width="formLabelWidth" prop="press">
+          <el-input v-model="form.press" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="封面" :label-width="formLabelWidth" prop="cover">
+          <el-input v-model="form.cover" autocomplete="off" placeholder="图片 URL"></el-input>
+        </el-form-item>
+        <el-form-item label="简介" :label-width="formLabelWidth" prop="abs">
+          <el-input type="textarea" v-model="form.abs" autocomplete="off"></el-input>
+        </el-form-item>
+        <el-form-item label="分类" :label-width="formLabelWidth" prop="cid">
+          <el-select v-model="form.category.id" placeholder="请选择分类">
+            <el-option label="文学" value="1"></el-option>
+            <el-option label="流行" value="2"></el-option>
+            <el-option label="文化" value="3"></el-option>
+            <el-option label="生活" value="4"></el-option>
+            <el-option label="经管" value="5"></el-option>
+            <el-option label="科技" value="6"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item prop="id" style="height: 0">
+          <el-input type="hidden" v-model="form.id" autocomplete="off"></el-input>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="dialogFormVisible = false">取 消</el-button>
+        <el-button type="primary" @click="onSubmit">确 定</el-button>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+  export default {
+    name: 'EditForm',
+    data () {
+      return {
+        dialogFormVisible: false,
+        form: {
+          id: '',
+          title: '',
+          author: '',
+          date: '',
+          press: '',
+          cover: '',
+          abs: '',
+          category: {
+            id: '',
+            name: ''
+          }
+        },
+        formLabelWidth: '120px'
+      }
+    },
+    methods: {
+      clear () {
+        this.form = {
+          id: '',
+          title: '',
+          author: '',
+          date: '',
+          press: '',
+          cover: '',
+          abs: '',
+          category: ''
+        }
+      },
+      onSubmit () {
+        this.$axios
+          .post('/books', {
+            id: this.form.id,
+            cover: this.form.cover,
+            title: this.form.title,
+            author: this.form.author,
+            date: this.form.date,
+            press: this.form.press,
+            abs: this.form.abs,
+            category: this.form.category
+          }).then(resp => {
+          if (resp && resp.status === 200) {
+            this.dialogFormVisible = false
+            this.$emit('onSubmit')
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  .el-icon-circle-plus-outline {
+    margin: 50px 0 0 20px;
+    font-size: 100px;
+    float: left;
+    cursor: pointer;
+  }
+</style>
+```
+
+### 9.2SearchBar.vue
+
+这个组件是用于搜索的搜索框。
+
+```html
+<template>
+  <div style="margin-bottom: 30px;display: flex;justify-content: center;align-items: center">
+    <el-input
+      @keyup.enter.native="searchClick"
+      placeholder="通过书名或作者搜索..."
+      prefix-icon="el-icon-search"
+      size="small"
+      style="width: 400px;margin-right: 10px"
+      v-model="keywords">
+    </el-input>
+    <el-button size="small" type="primary" icon="el-icon-search" @click="searchClick">搜索</el-button>
+  </div>
+</template>
+
+<script>
+  export default {
+    name: 'SearchBar',
+    data () {
+      return {
+        keywords: '',
+        books: [],
+        cardLoading: []
+      }
+    },
+    methods: {
+      searchClick () {
+        this.$emit('onSearch')
+      }
+    }
+  }
+</script>
+
+<style scoped>
+
+</style>
+```
+
+### 9.3Books.vue(修改)
+
+Books.vue 是我们图书管理页面的核心组件，主要的修改如下：
+
+- 添加搜索框
+- 添加增加、删除按钮
+- 完善分页功能
+- 构造增、删、改、查对应的请求
+
+```html
+<template>
+  <div>
+    <el-row style="height: 840px;">
+      <search-bar @onSearch="searchResult" ref="searchBar"></search-bar>
+      <el-tooltip effect="dark" placement="right"
+                  v-for="item in books.slice((currentPage-1)*pagesize,currentPage*pagesize)"
+                  :key="item.id">
+        <p slot="content" style="font-size: 14px;margin-bottom: 6px;">{{item.title}}</p>
+        <p slot="content" style="font-size: 13px;margin-bottom: 6px">
+          <span>{{item.author}}</span> /
+          <span>{{item.date}}</span> /
+          <span>{{item.press}}</span>
+        </p>
+        <p slot="content" style="width: 300px" class="abstract">{{item.abs}}</p>
+        <el-card style="width: 135px;margin-bottom: 20px;height: 233px;float: left;margin-right: 15px" class="book"
+                 bodyStyle="padding:10px" shadow="hover">
+          <div class="cover" @click="editBook(item)">
+            <img :src="item.cover" alt="封面">
+          </div>
+          <div class="info">
+            <div class="title">
+              <a href="">{{item.title}}</a>
+            </div>
+            <i class="el-icon-delete" @click="deleteBook(item.id)"></i>
+          </div>
+          <div class="author">{{item.author}}</div>
+        </el-card>
+      </el-tooltip>
+      <edit-form @onSubmit="loadBooks()" ref="edit"></edit-form>
+    </el-row>
+    <el-row>
+      <el-pagination
+        @current-change="handleCurrentChange"
+        :current-page="currentPage"
+        :page-size="pagesize"
+        :total="books.length">
+      </el-pagination>
+    </el-row>
+  </div>
+</template>
+
+<script>
+  import EditForm from './EditForm'
+  import SearchBar from './SearchBar'
+  export default {
+    name: 'Books',
+    components: {EditForm, SearchBar},
+    data () {
+      return {
+        books: [],
+        currentPage: 1,
+        pagesize: 17
+      }
+    },
+    mounted: function () {
+      this.loadBooks()
+    },
+    methods: {
+      loadBooks () {
+        var _this = this
+        this.$axios.get('/books').then(resp => {
+          if (resp && resp.status === 200) {
+            _this.books = resp.data
+          }
+        })
+      },
+      handleCurrentChange: function (currentPage) {
+        this.currentPage = currentPage
+        console.log(this.currentPage)
+      },
+      searchResult () {
+        var _this = this
+        this.$axios
+          .get('/search?keywords=' + this.$refs.searchBar.keywords, {
+          }).then(resp => {
+          if (resp && resp.status === 200) {
+            _this.books = resp.data
+          }
+        })
+      },
+      deleteBook (id) {
+        this.$confirm('此操作将永久删除该书籍, 是否继续?', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }).then(() => {
+            this.$axios
+              .post('/delete', {id: id}).then(resp => {
+              if (resp && resp.status === 200) {
+                this.loadBooks()
+              }
+            })
+          }
+        ).catch(() => {
+          this.$message({
+            type: 'info',
+            message: '已取消删除'
+          })
+        })
+        // alert(id)
+      },
+      editBook (item) {
+        this.$refs.edit.dialogFormVisible = true
+        this.$refs.edit.form = {
+          id: item.id,
+          cover: item.cover,
+          title: item.title,
+          author: item.author,
+          date: item.date,
+          press: item.press,
+          abs: item.abs,
+          category: {
+            id: item.category.id.toString(),
+            name: item.category.name
+          }
+        }
+      }
+    }
+  }
+</script>
+<style scoped>
+
+  .cover {
+    width: 115px;
+    height: 172px;
+    margin-bottom: 7px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  img {
+    width: 115px;
+    height: 172px;
+    /*margin: 0 auto;*/
+  }
+
+  .title {
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .author {
+    color: #333;
+    width: 102px;
+    font-size: 13px;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+
+  .abstract {
+    display: block;
+    line-height: 17px;
+  }
+
+  .el-icon-delete {
+    cursor: pointer;
+    float: right;
+  }
+
+  .switch {
+    display: flex;
+    position: absolute;
+    left: 780px;
+    top: 25px;
+  }
+
+  a {
+    text-decoration: none;
+  }
+
+  a:link, a:visited, a:focus {
+    color: #3377aa;
+  }
+
+</style>
+```
+
+第一个功能，打开页面显示所有图书，即在打开页面时就自动触发相应代码发送请求并渲染页面。为了实现这个目的，我们用到了 Vue 的 **钩子函数** —— mounted。
+
+**mounted** 即 **“已挂载”** ，所谓挂载，就是我们写的 Vue 代码被转换为 HTML 并替换相应的 DOM 这个过程，这个过程完事儿的时候，就会执行 mounted 里面的代码，即
+
+```javascript
+    mounted: function () {
+      this.loadBooks()
+    }
+
+```
+
+`loadBooks()` 方法写在 `methonds` 里面：
+
+```javascript
+loadBooks () {
+        var _this = this
+        this.$axios.get('/books').then(resp => {
+          if (resp && resp.status === 200) {
+            _this.books = resp.data
+          }
+        })
+      }
+
+```
+
+很简单，就是利用 axios 发送了一个 get 请求，在接受到后端返回的成功代码后把 `data` 里的数据替换为后端返回的数据。利用 `data` 和 `template` 里相应元素的双向绑定，实现页面的动态渲染。
+
+### 9.4LibraryIndex.vue（修改）
+
+这里的修改主要是实现按分类查询。
+
+```html
+<template>
+  <el-container>
+    <el-aside style="width: 200px;margin-top: 20px">
+      <switch></switch>
+      <SideMenu @indexSelect="listByCategory" ref="sideMenu"></SideMenu>
+    </el-aside>
+    <el-main>
+      <books class="books-area" ref="booksArea"></books>
+    </el-main>
+  </el-container>
+</template>
+
+<script>
+  import SideMenu from './SideMenu'
+  import Books from './Books'
+
+  export default {
+    name: 'AppLibrary',
+    components: {Books, SideMenu},
+    methods: {
+      listByCategory () {
+        var _this = this
+        var cid = this.$refs.sideMenu.cid
+        var url = 'categories/' + cid + '/books'
+        this.$axios.get(url).then(resp => {
+          if (resp && resp.status === 200) {
+            _this.$refs.booksArea.books = resp.data
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  .books-area {
+    width: 990px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+</style>
+```
+
+分类这个功能的前端实现逻辑是，点击左侧导航栏，向后端发送一个带有参数的 get 请求，然后同样是修改 `data` 里的数据以实现动态渲染。核心方法如下：
+
+```javascript
+      listByCategory () {
+        var _this = this
+        var cid = this.$refs.sideMenu.cid
+        var url = 'categories/' + cid + '/books'
+        this.$axios.get(url).then(resp => {
+          if (resp && resp.status === 200) {
+            _this.$refs.booksArea.books = resp.data
+          }
+        })
+      }
+
+```
+
+可以看出，`SideMenu` 组件在 `LibraryIndex` 组件中作为一个 **子组件** 存在，是 `LibraryIndex` 组件的一部分。在它的标签中，我们用 `ref` 属性设置了一个引用名。
+
+```html
+<SideMenu @indexSelect="listByCategory" ref="sideMenu"></SideMenu>
+
+```
+
+这样，我们就可以通过 _this.refs.sideMenu 来引用侧面导航栏的实例，并获取它的 data 了。
+
+更骚的是 @indexSelect="listByCategory"，这个东西为 listByCategory() 方法设置了触发事件。大家熟悉的事件有点击、鼠标移动之类，都有固定的名称，而这个 indexSelect 是我随便起的，为了触发这个事件，在子组件，也即 SideMenu 里有这么个方法：
+
+
+```javascript
+
+      handleSelect (key) {
+        this.cid = key
+        this.$emit('indexSelect')
+      }
+
+```
+
+emit，即触发，在子组件中使用 `$emit` 方法，即可触发在父组件中定义的事件。而这个 `handleSelect` 方法，则由 `@select` 事件触发。
+
+总结一下，当你通过点击选择侧边导航栏的一个标签后
+
++ 触发 <el-menu> 组件的 @select 事件，执行 handleSelect 方法
+
++ handleSelect 方法触发 indexSelect 事件，并把 key，即 标签的 index 属性的值赋给 data 中定义的属性，即分类码
+
++ 父组件收到指令，执行事件对应的方法，即 listByCategory 方法
+
++ 发送请求，后端执行查询代码，返回数据，再通过 refs 修改 Books组件的 data 以动态渲染页面。
+
+最后还有一点需要注意的就是 url 的构造方式：
+
+```javascript
+var url = 'categories/' + cid + '/books'
+
+```
+
+这样，便与后端控制器的写法对应起来了。
+
+```java
+    @GetMapping("/api/categories/{cid}/books")
+    public List<Book> listByCategory(@PathVariable("cid") int cid) throws Exception {
+        if (0 != cid) {
+            return bookService.listByCategory(cid);
+        } else {
+            return list();
+        }
+    }
+
+```
+
+### 9.5SideMenu.vue（修改）
+
+侧边分类导航栏的修改主要是实现了点击分类引发查询事件。
+
+```html
+<template>
+  <el-menu
+    class="categories"
+    default-active="0"
+    @select="handleSelect"
+    active-text-color="red">
+    <el-menu-item index="0">
+      <i class="el-icon-menu"></i>
+      <span slot="title">全部</span>
+    </el-menu-item>
+    <el-menu-item index="1">
+      <i class="el-icon-menu"></i>
+      <span slot="title">文学</span>
+    </el-menu-item>
+    <el-menu-item index="2">
+      <i class="el-icon-menu"></i>
+      <span slot="title">流行</span>
+    </el-menu-item>
+    <el-menu-item index="3">
+      <i class="el-icon-menu"></i>
+      <span slot="title">文化</span>
+    </el-menu-item>
+    <el-menu-item index="4">
+      <i class="el-icon-menu"></i>
+      <span slot="title">生活</span>
+    </el-menu-item>
+    <el-menu-item index="5">
+      <i class="el-icon-menu"></i>
+      <span slot="title">经管</span>
+    </el-menu-item>
+    <el-menu-item index="6">
+      <i class="el-icon-menu"></i>
+      <span slot="title">科技</span>
+    </el-menu-item>
+  </el-menu>
+</template>
+
+<script>
+  export default {
+    name: 'SideMenu',
+    data () {
+      return {
+        cid: ''
+      }
+    },
+    methods: {
+      handleSelect (key, keyPath) {
+        this.cid = key
+        this.$emit('indexSelect')
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  .categories {
+    position: fixed;
+    margin-left: 50%;
+    left: -600px;
+    top: 100px;
+    width: 150px;
+  }
+</style>
+```
+
+完成以上步骤后发现页面并没有显示书，这里还需要解决跨域问题
+
+### 9.6跨域
+
+解决跨域问题，也可以通过修改 `MyWebConfigurer.java` 来实现，所有请求都允许跨域的代码如下：
+
+```java
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        //所有请求都允许跨域
+        registry.addMapping("/**")
+                .allowedOrigins("*")
+                .allowedMethods("*")
+                .allowedHeaders("*");
+    }
+```
+
+也可以在`LibraryController.java` 的每个方法前面都加上 `@CrossOrigin`
+
+
+
+至此为止实现功能：
+
+- 点击封面图片，弹出修改页面
+- 封面右下角的小垃圾桶图标是删除
+- 点击页面中的大圆圈加号以添加图书
+- 最下面的页码也可以使用了
+- 左侧分类栏可以使用
+- 搜索栏（样式实现）功能未实现
+
+
+
+### 9.10搜索栏
+
+之前后端没有实现按关键字查询的接口，现在我们补上。首先在 `BookService.java` 中添加一个方法：
+
+```java
+    public List<Book> Search(String keywords) {
+        return bookDAO.findAllByTitleLikeOrAuthorLike('%' + keywords + '%', '%' + keywords + '%');
+    }
+
+```
